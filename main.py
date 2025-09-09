@@ -103,21 +103,15 @@ from math import hypot
 
 
 def get_target_player(state_players, bot_id, bot_position):
-    """
-    Returns the closest player that is not the bot itself or caught.
-    state_players: dict of player data
-    bot_id: id of the bot
-    bot_position: dict with keys 'x', 'y'
-    """
+
     try:
 
-        others = [p for p in state_players.values() if p['id'] != bot_id]
+        others = [p for p in state_players.values() if p['id'] != bot_id and not p['isCaught']]
     except:
         others = []
     if not others:
         return None
 
-    # find the closest player
     closest = others[0]
     min_dist = hypot(closest['x'] - bot_position['x'], closest['y'] - bot_position['y'])
     for p in others[1:]:
