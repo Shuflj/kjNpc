@@ -1,10 +1,14 @@
-﻿import socketio
+﻿import random
+import sys
+
+import socketio
 import time
 import math
 
 # Create a Socket.IO client
 sio = socketio.Client()
 players_data = {}  # key: player id, value: dict with x, y, isCaught, etc.
+host, key, diff = None, None, None
 
 bot_id = None
 bot_position = {"x": 100, "y": 100, "facingAngle": 0, "isMoving": False}
@@ -91,7 +95,7 @@ bot_role = "hider"
 import time
 
 last_chase_time = 0
-CHASE_INTERVAL = 5  # seconds
+CHASE_INTERVAL = 15 if diff == 1 else 10 if diff == 2 else 5
 
 import time
 from math import hypot
@@ -172,7 +176,9 @@ def update_bot_target(bot_position, bot_id, state_players, walls, compute_path):
 
 BOT_WIDTH = 40
 BOT_HEIGHT = 50
+BOT_FLASHON = True
 def update_player(pid, data):
+    global BOT_FLASHON
 
     """Update or create a player entry safely"""
     global players_data
@@ -183,6 +189,10 @@ def update_player(pid, data):
     for key in ['x', 'y', 'facingAngle', 'isMoving', 'id', 'flashOn', 'username', 'isCaught', 'role']:
         if key in data:
             players_data[pid][key] = data[key]
+            if data[key] == bot_id:
+                if data['isCaught']:
+                    players_data[pid]['isMoving'] = False
+                    BOT_FLASHON = False
 
 def collides_with_walls(x, y, walls):
     """Check if the bot's bounding box overlaps any wall rectangle"""
@@ -288,7 +298,7 @@ def compute_path(start_pos, target_pos):
 
 
 
-@sio.on('hostGame')
+@sio.on('joinGame')
 def handle_host_game(data):
     print("Game hosted:", data)
 
@@ -309,14 +319,7 @@ def handle_player_moved(data):
 def handle_current_players(data):
     print("Current players:", data)
 
-@sio.on('newPlayer')
-def handle_new_player(data):
-    global ready
-    if data["id"] == bot_id:
-        return
-    ready = True
-    print("New player joined:", data)
-    sio.emit('updateReadyStatus',True)
+
 
 @sio.on('playerDisconnected')
 def handle_player_disconnected(player_id):
@@ -324,9 +327,22 @@ def handle_player_disconnected(player_id):
 
 @sio.on('startGame')
 def handle_start_game(data):
-    global bot_role
-    bot_role = data[bot_id]['role']
+    global bot_role, bot_position, ready
     print("Game started:", data)
+
+    bot_role = data[bot_id]['role']
+    bot_position = {"x": data[bot_id]['x'], "y": data[bot_id]['y'], "facingAngle": 0, "isMoving": False}
+    ready = True
+
+    print("Game started:", data)
+
+@sio.on('playerCaught')
+def caught(data):
+    global ready, BOT_FLASHON
+    if data == bot_id:
+        ready = False
+
+
 
 
 
@@ -368,14 +384,30 @@ def move_bot(delta_time):
     bot_position["y"] += ny * step
     bot_position["facingAngle"] = math.atan2(dy, dx)
     bot_position["isMoving"] = True
-    bot_position['flashOn'] = True
+    bot_position['flashOn'] = BOT_FLASHON
 
     sio.emit("move", bot_position)
+@sio.on('game:ended')
+def end(data):
+    global ready
+    ready = False
 
+@sio.on('error')
+def on_error(data):
+    print("Error:", data)
 
 def main():
-    sio.connect("http://localhost:8080")
-    sio.emit('hostGame', {'username': 'bot'})
+    global  host, key, diff
+    host = sys.argv[1]
+    key = sys.argv[2]
+    diff = sys.argv[3]
+
+
+    sio.connect("http://localhost:8080", auth={"key": key})
+    sio.emit('joinGame', {'gameId': host, 'username':f'bot_{random.randint(0,20)}' })
+    sio.emit('updateReadyStatus',True)
+
+
     last_time = time.time()
     while True:
         current_time = time.time()
@@ -385,6 +417,11 @@ def main():
         if ready:
             update_bot_target(bot_position, bot_id, players_data, walls, compute_path)
             move_bot(delta_time)
+        else:
+            bot_position["isMoving"] = False
+            bot_position['flashOn'] = False
+            sio.emit("move", bot_position)
+
         time.sleep(0.016)
 
 if __name__ == "__main__":
