@@ -397,8 +397,8 @@ def main():
     diff = sys.argv[3]
 
 
-    sio.connect("http://localhost:8080", auth={"key": key})
-    sio.emit('joinGame', {'gameId': host, 'username':f'bot_{random.randint(0,20)}' })
+    sio.connect("http://localhost:8080")
+    sio.emit('joinGame', {'gameId': host, 'username':f'bot_{random.randint(0,20)}', 'key':key })
     sio.emit('updateReadyStatus',True)
 
 
